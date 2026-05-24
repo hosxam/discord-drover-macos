@@ -18,13 +18,16 @@ clang -std=c11 -Wall -Wextra -Werror \
 
 printf '[drover]\nproxy = \n' > "$CONFIG/drover.ini"
 printf 'packet-test' > "$CONFIG/drover-packet.bin"
+echo "Testing Direct-mode UDP injection..."
 DROVER_CONFIG_DIR="$CONFIG" DYLD_INSERT_LIBRARIES="$SHIM" "$HARNESS" udp
 
 rm -f "$CONFIG/drover-packet.bin"
 printf '[drover]\nproxy = http://user:pass@127.0.0.1:8080\n' > "$CONFIG/drover.ini"
+echo "Testing HTTP proxy authentication injection..."
 DROVER_CONFIG_DIR="$CONFIG" DYLD_INSERT_LIBRARIES="$SHIM" "$HARNESS" http
 
 printf '[drover]\nproxy = socks5://127.0.0.1:1080\n' > "$CONFIG/drover.ini"
+echo "Testing SOCKS5 CONNECT translation..."
 DROVER_CONFIG_DIR="$CONFIG" DYLD_INSERT_LIBRARIES="$SHIM" "$HARNESS" socks5
 
 echo "Drover shim integration tests passed."

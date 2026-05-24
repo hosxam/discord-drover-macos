@@ -11,13 +11,17 @@
 #define FAIL(message) do { fprintf(stderr, "%s\n", message); return 1; } while (0)
 #define CHECK(condition, message) do { if (!(condition)) FAIL(message); } while (0)
 
+static void set_receive_timeout(int socket_fd) {
+    struct timeval timeout = { .tv_sec = 3, .tv_usec = 0 };
+    setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+}
+
 static int make_udp_receiver(struct sockaddr_in *address) {
     int receiver = socket(AF_INET, SOCK_DGRAM, 0);
     if (receiver < 0) {
         return -1;
     }
-    struct timeval timeout = { .tv_sec = 2, .tv_usec = 0 };
-    setsockopt(receiver, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    set_receive_timeout(receiver);
     memset(address, 0, sizeof(*address));
     address->sin_family = AF_INET;
     address->sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -103,6 +107,8 @@ static int test_http_auth(void) {
     CHECK(client >= 0, "Could not connect TCP client.");
     int server = accept(listener, NULL, NULL);
     CHECK(server >= 0, "Could not accept TCP client.");
+    set_receive_timeout(client);
+    set_receive_timeout(server);
 
     const char request[] =
         "CONNECT discord.com:443 HTTP/1.1\r\n"
@@ -180,6 +186,8 @@ static int test_socks5_translation(void) {
     CHECK(client >= 0, "Could not connect SOCKS5 client.");
     int server = accept(listener, NULL, NULL);
     CHECK(server >= 0, "Could not accept SOCKS5 client.");
+    set_receive_timeout(client);
+    set_receive_timeout(server);
     socks_server_state_t state = { .socket = server, .success = false };
     pthread_t thread;
     CHECK(pthread_create(&thread, NULL, serve_socks5, &state) == 0, "Could not start SOCKS5 thread.");
@@ -201,6 +209,8 @@ static int test_socks5_translation(void) {
 }
 
 int main(int argc, char **argv) {
+    setbuf(stdout, NULL);
+    setbuf(stderr, NULL);
     if (argc != 2) {
         fprintf(stderr, "Usage: %s udp|http|socks5\n", argv[0]);
         return 2;
@@ -210,4 +220,3 @@ int main(int argc, char **argv) {
     if (strcmp(argv[1], "socks5") == 0) return test_socks5_translation();
     FAIL("Unknown test name.");
 }
-
