@@ -20,23 +20,28 @@ run_test() {
     local label="$1"
     local mode="$2"
     local pid
+    local log="$TEMP_ROOT/$mode.log"
+    local details
 
     echo "Testing $label..."
-    env DROVER_CONFIG_DIR="$CONFIG" DYLD_INSERT_LIBRARIES="$SHIM" "$HARNESS" "$mode" &
+    env DROVER_CONFIG_DIR="$CONFIG" DYLD_INSERT_LIBRARIES="$SHIM" "$HARNESS" "$mode" > "$log" 2>&1 &
     pid=$!
     for _ in {1..15}; do
         if ! kill -0 "$pid" 2>/dev/null; then
             if wait "$pid"; then
+                cat "$log"
                 return
             fi
-            echo "::error title=Shim integration test failed::$label failed. See build output for details."
+            details="$(tail -c 1000 "$log" | tr '\n' ' ')"
+            echo "::error title=Shim integration test failed::$label failed: $details"
             exit 1
         fi
         sleep 1
     done
     kill "$pid" 2>/dev/null || true
     wait "$pid" 2>/dev/null || true
-    echo "::error title=Shim integration test timed out::$label timed out after 15 seconds."
+    details="$(tail -c 1000 "$log" | tr '\n' ' ')"
+    echo "::error title=Shim integration test timed out::$label timed out after 15 seconds. $details"
     exit 1
 }
 
