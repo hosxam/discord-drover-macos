@@ -144,10 +144,10 @@ Launch diagnostics are written to:
 ## Implementation Notes
 
 The injected dylib interposes Darwin `socket`, `send`, `sendto`, `sendmsg`,
-`recv`, `write`, and `read` calls. Like the source Windows project, UDP
-handling is applied only when the first outgoing datagram from a tracked UDP
-socket is 74 bytes: it sends the optional packet, one byte containing `0`,
-one byte containing `1`, waits 50 ms, and then allows the original packet.
+and `recv` calls. Like the source Windows project, UDP handling is applied
+only when the first outgoing datagram from a tracked UDP socket is 74 bytes:
+it sends the optional packet, one byte containing `0`, one byte containing
+`1`, waits 50 ms, and then allows the original packet.
 
 This source tree must be built and exercised on a Mac; a Windows host cannot
 compile or live-test the macOS dylib injection and Discord voice path.

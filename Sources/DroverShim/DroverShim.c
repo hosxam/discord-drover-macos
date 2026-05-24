@@ -31,11 +31,8 @@ typedef struct {
 } socket_state_t;
 
 static int (*system_socket)(int, int, int);
-static int (*system_close)(int);
 static ssize_t (*system_send)(int, const void *, size_t, int);
 static ssize_t (*system_recv)(int, void *, size_t, int);
-static ssize_t (*system_write)(int, const void *, size_t);
-static ssize_t (*system_read)(int, void *, size_t);
 static ssize_t (*system_sendto)(int, const void *, size_t, int, const struct sockaddr *, socklen_t);
 static ssize_t (*system_sendmsg)(int, const struct msghdr *, int);
 
@@ -52,11 +49,8 @@ static char packet_path[PATH_MAX];
 
 static void resolve_system_calls(void) {
     system_socket = dlsym(RTLD_NEXT, "socket");
-    system_close = dlsym(RTLD_NEXT, "close");
     system_send = dlsym(RTLD_NEXT, "send");
     system_recv = dlsym(RTLD_NEXT, "recv");
-    system_write = dlsym(RTLD_NEXT, "write");
-    system_read = dlsym(RTLD_NEXT, "read");
     system_sendto = dlsym(RTLD_NEXT, "sendto");
     system_sendmsg = dlsym(RTLD_NEXT, "sendmsg");
 }
@@ -176,15 +170,6 @@ static void track_socket(int fd, int type) {
         socket_capacity = expanded;
     }
     sockets[socket_count++] = (socket_state_t){ .fd = fd, .type = type };
-    pthread_mutex_unlock(&sockets_lock);
-}
-
-static void untrack_socket(int fd) {
-    pthread_mutex_lock(&sockets_lock);
-    ssize_t existing = find_socket_unlocked(fd);
-    if (existing >= 0) {
-        sockets[existing] = sockets[--socket_count];
-    }
     pthread_mutex_unlock(&sockets_lock);
 }
 
@@ -472,12 +457,6 @@ int drover_socket(int domain, int type, int protocol) {
     return fd;
 }
 
-int drover_close(int fd) {
-    ensure_system_calls();
-    untrack_socket(fd);
-    return system_close(fd);
-}
-
 ssize_t drover_send(int fd, const void *buffer, size_t length, int flags) {
     ensure_system_calls();
     int type;
@@ -495,31 +474,9 @@ ssize_t drover_send(int fd, const void *buffer, size_t length, int flags) {
     return system_send(fd, buffer, length, flags);
 }
 
-ssize_t drover_write(int fd, const void *buffer, size_t length) {
-    ensure_system_calls();
-    int type;
-    if (mark_first_send(fd, &type) && (type & SOCK_STREAM) == SOCK_STREAM) {
-        if (convert_http_connect_to_socks5(fd, buffer, length, 0)) {
-            return (ssize_t)length;
-        }
-        unsigned char *replacement = request_with_http_authorization(buffer, length);
-        if (replacement != NULL) {
-            ssize_t result = system_write(fd, replacement, length);
-            free(replacement);
-            return result;
-        }
-    }
-    return system_write(fd, buffer, length);
-}
-
 ssize_t drover_recv(int fd, void *buffer, size_t length, int flags) {
     ensure_system_calls();
     return substitute_socks_response(fd, buffer, length, system_recv(fd, buffer, length, flags));
-}
-
-ssize_t drover_read(int fd, void *buffer, size_t length) {
-    ensure_system_calls();
-    return substitute_socks_response(fd, buffer, length, system_read(fd, buffer, length));
 }
 
 ssize_t drover_sendto(
@@ -559,10 +516,7 @@ ssize_t drover_sendmsg(int fd, const struct msghdr *message, int flags) {
     }
 
 DYLD_INTERPOSE(drover_socket, socket);
-DYLD_INTERPOSE(drover_close, close);
 DYLD_INTERPOSE(drover_send, send);
 DYLD_INTERPOSE(drover_recv, recv);
-DYLD_INTERPOSE(drover_write, write);
-DYLD_INTERPOSE(drover_read, read);
 DYLD_INTERPOSE(drover_sendto, sendto);
 DYLD_INTERPOSE(drover_sendmsg, sendmsg);
