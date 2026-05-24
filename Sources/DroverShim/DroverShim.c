@@ -1,7 +1,6 @@
 #include "DroverShim.h"
 
 #include <arpa/inet.h>
-#include <dlfcn.h>
 #include <errno.h>
 #include <limits.h>
 #include <poll.h>
@@ -30,13 +29,6 @@ typedef struct {
     bool fake_http_response;
 } socket_state_t;
 
-static int (*system_socket)(int, int, int);
-static ssize_t (*system_send)(int, const void *, size_t, int);
-static ssize_t (*system_recv)(int, void *, size_t, int);
-static ssize_t (*system_sendto)(int, const void *, size_t, int, const struct sockaddr *, socklen_t);
-static ssize_t (*system_sendmsg)(int, const struct msghdr *, int);
-
-static pthread_once_t resolve_once = PTHREAD_ONCE_INIT;
 static pthread_mutex_t sockets_lock = PTHREAD_MUTEX_INITIALIZER;
 static socket_state_t *sockets;
 static size_t socket_count;
@@ -52,20 +44,6 @@ static void trace_log(const char *message) {
     if (trace_enabled) {
         write(STDERR_FILENO, message, strlen(message));
     }
-}
-
-static void resolve_system_calls(void) {
-    trace_log("resolve begin\n");
-    system_socket = dlsym(RTLD_NEXT, "socket");
-    system_send = dlsym(RTLD_NEXT, "send");
-    system_recv = dlsym(RTLD_NEXT, "recv");
-    system_sendto = dlsym(RTLD_NEXT, "sendto");
-    system_sendmsg = dlsym(RTLD_NEXT, "sendmsg");
-    trace_log("resolve end\n");
-}
-
-static void ensure_system_calls(void) {
-    pthread_once(&resolve_once, resolve_system_calls);
 }
 
 static char *trim(char *value) {
@@ -340,7 +318,7 @@ static unsigned char *request_with_http_authorization(const void *input, size_t 
 
 static bool send_all(int fd, const unsigned char *bytes, size_t length, int flags) {
     while (length > 0) {
-        ssize_t sent = system_send(fd, bytes, length, flags);
+        ssize_t sent = send(fd, bytes, length, flags);
         if (sent <= 0) {
             return false;
         }
@@ -356,7 +334,7 @@ static bool receive_exact(int fd, unsigned char *bytes, size_t length) {
         if (poll(&descriptor, 1, 10000) <= 0) {
             return false;
         }
-        ssize_t received = system_recv(fd, bytes, length, 0);
+        ssize_t received = recv(fd, bytes, length, 0);
         if (received <= 0) {
             return false;
         }
@@ -447,7 +425,7 @@ static void inject_udp_preamble(int fd, const struct sockaddr *destination, sock
                     if (bytes != NULL) {
                         if (fread(bytes, 1, (size_t)packet_length, packet) == (size_t)packet_length) {
                             trace_log("preamble packet send\n");
-                            system_sendto(fd, bytes, (size_t)packet_length, 0, destination, destination_length);
+                            sendto(fd, bytes, (size_t)packet_length, 0, destination, destination_length);
                         }
                         free(bytes);
                     }
@@ -460,16 +438,15 @@ static void inject_udp_preamble(int fd, const struct sockaddr *destination, sock
     const unsigned char zero = 0;
     const unsigned char one = 1;
     trace_log("preamble builtins send\n");
-    system_sendto(fd, &zero, 1, 0, destination, destination_length);
-    system_sendto(fd, &one, 1, 0, destination, destination_length);
+    sendto(fd, &zero, 1, 0, destination, destination_length);
+    sendto(fd, &one, 1, 0, destination, destination_length);
     usleep(50000);
     trace_log("preamble end\n");
 }
 
 int drover_socket(int domain, int type, int protocol) {
     trace_log("socket enter\n");
-    ensure_system_calls();
-    int fd = system_socket(domain, type, protocol);
+    int fd = socket(domain, type, protocol);
     trace_log("socket real returned\n");
     if ((type & SOCK_STREAM) == SOCK_STREAM || (type & SOCK_DGRAM) == SOCK_DGRAM) {
         track_socket(fd, type & 0xffff);
@@ -479,7 +456,6 @@ int drover_socket(int domain, int type, int protocol) {
 }
 
 ssize_t drover_send(int fd, const void *buffer, size_t length, int flags) {
-    ensure_system_calls();
     int type;
     if (mark_first_send(fd, &type) && (type & SOCK_STREAM) == SOCK_STREAM) {
         if (convert_http_connect_to_socks5(fd, buffer, length, flags)) {
@@ -487,17 +463,16 @@ ssize_t drover_send(int fd, const void *buffer, size_t length, int flags) {
         }
         unsigned char *replacement = request_with_http_authorization(buffer, length);
         if (replacement != NULL) {
-            ssize_t result = system_send(fd, replacement, length, flags);
+            ssize_t result = send(fd, replacement, length, flags);
             free(replacement);
             return result;
         }
     }
-    return system_send(fd, buffer, length, flags);
+    return send(fd, buffer, length, flags);
 }
 
 ssize_t drover_recv(int fd, void *buffer, size_t length, int flags) {
-    ensure_system_calls();
-    return substitute_socks_response(fd, buffer, length, system_recv(fd, buffer, length, flags));
+    return substitute_socks_response(fd, buffer, length, recv(fd, buffer, length, flags));
 }
 
 ssize_t drover_sendto(
@@ -509,17 +484,15 @@ ssize_t drover_sendto(
     socklen_t destination_length
 ) {
     trace_log("sendto enter\n");
-    ensure_system_calls();
     int type;
     if (mark_first_send(fd, &type) && (type & SOCK_DGRAM) == SOCK_DGRAM && length == 74) {
         inject_udp_preamble(fd, destination, destination_length);
     }
     trace_log("sendto original\n");
-    return system_sendto(fd, buffer, length, flags, destination, destination_length);
+    return sendto(fd, buffer, length, flags, destination, destination_length);
 }
 
 ssize_t drover_sendmsg(int fd, const struct msghdr *message, int flags) {
-    ensure_system_calls();
     int type;
     size_t length = 0;
     for (int index = 0; index < message->msg_iovlen; index++) {
@@ -529,7 +502,7 @@ ssize_t drover_sendmsg(int fd, const struct msghdr *message, int flags) {
         length == 74 && message->msg_name != NULL) {
         inject_udp_preamble(fd, message->msg_name, message->msg_namelen);
     }
-    return system_sendmsg(fd, message, flags);
+    return sendmsg(fd, message, flags);
 }
 
 #define DYLD_INTERPOSE(replacement, replacee) \
