@@ -31,4 +31,6 @@ else
     codesign --force --deep --timestamp --options runtime --sign "$SIGNING_IDENTITY" "$APP"
 fi
 
+bash "$ROOT/Scripts/test-shim.sh" "$APP/Contents/Resources/libdrover.dylib"
+
 echo "Built $APP"
