@@ -80,6 +80,7 @@ final class DroverController: ObservableObject {
     @Published var status = ""
     @Published var statusIsError = false
     @Published var busy = false
+    @Published var canRevealManagedCopy = false
 
     private let supportDirectory = DroverRuntime.supportDirectory
 
@@ -130,6 +131,7 @@ final class DroverController: ObservableObject {
         }
 
         busy = true
+        canRevealManagedCopy = false
         statusIsError = false
         status = "Preparing a private Discord copy and applying Drover settings..."
 
@@ -146,6 +148,7 @@ final class DroverController: ObservableObject {
                 statusIsError = false
             } catch {
                 setError(error.localizedDescription)
+                canRevealManagedCopy = DroverRuntime.hasManagedCopy(for: application.url)
             }
             busy = false
         }
@@ -178,10 +181,22 @@ final class DroverController: ObservableObject {
     func removeManagedCopy() {
         do {
             try DroverRuntime.removeManagedCopies()
+            canRevealManagedCopy = false
             setStatus("Removed the managed Discord copy. Your original installation was not changed.")
         } catch {
             setError("Could not remove the managed copy: \(error.localizedDescription)")
         }
+    }
+
+    func revealManagedCopy() {
+        guard let application = applications.first(where: { $0.path == selectedApplicationPath }),
+              let managedApplication = DroverRuntime.managedApplicationURL(for: application.url) else {
+            setError("No prepared Discord copy was found. Click Prepare and Launch Discord first.")
+            return
+        }
+
+        NSWorkspace.shared.activateFileViewerSelecting([managedApplication])
+        setStatus("In Finder, Control-click the revealed Discord app, choose Open, approve it, then quit it and retry from Discord Drover.")
     }
 
     private func validatedSettings() throws -> LaunchSettings {
@@ -321,16 +336,41 @@ enum DroverRuntime {
         }
 
         let process = Process()
+        let log = supportDirectory.appendingPathComponent("discord-launch.log")
+        fileManager.createFile(atPath: log.path, contents: nil)
+        let logHandle = try FileHandle(forWritingTo: log)
+        defer { try? logHandle.close() }
         process.executableURL = executable
         process.environment = environment
+        process.standardOutput = logHandle
+        process.standardError = logHandle
         if let proxy = settings.chromeProxy {
             process.arguments = ["--proxy-server=\(proxy)"]
         }
         try process.run()
+        Thread.sleep(forTimeInterval: 2.0)
+        try? logHandle.synchronize()
+        guard process.isRunning else {
+            let details = compactLogDetails(from: log)
+            throw DroverError.message(
+                "Discord exited before opening. Click Reveal Prepared Discord, Control-click Discord in Finder, choose Open, quit it, and try again." + details
+            )
+        }
 
         return settings.mode == .direct
             ? "Discord launched in Direct mode. UDP voice handling is active."
             : "Discord launched through the configured \(settings.mode.displayName) proxy with UDP voice handling active."
+    }
+
+    static func managedApplicationURL(for sourceApplication: URL) -> URL? {
+        let managedApplication = supportDirectory
+            .appendingPathComponent("Managed", isDirectory: true)
+            .appendingPathComponent(sourceApplication.lastPathComponent, isDirectory: true)
+        return FileManager.default.fileExists(atPath: managedApplication.path) ? managedApplication : nil
+    }
+
+    static func hasManagedCopy(for sourceApplication: URL) -> Bool {
+        managedApplicationURL(for: sourceApplication) != nil
     }
 
     static func removeManagedCopies() throws {
@@ -364,5 +404,17 @@ enum DroverRuntime {
             let detail = String(data: data, encoding: .utf8) ?? "codesign failed."
             throw DroverError.message("Could not prepare Discord for the Drover shim: \(detail)")
         }
+    }
+
+    private static func compactLogDetails(from url: URL) -> String {
+        guard let data = try? Data(contentsOf: url),
+              !data.isEmpty,
+              let output = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !output.isEmpty else {
+            return ""
+        }
+        let suffix = String(output.suffix(500))
+        return "\n\nLaunch log: \(suffix)"
     }
 }

@@ -73,6 +73,13 @@ struct ContentView: View {
                 }
                 .disabled(controller.busy)
 
+                if controller.canRevealManagedCopy {
+                    Button("Reveal Prepared Discord") {
+                        controller.revealManagedCopy()
+                    }
+                    .disabled(controller.busy)
+                }
+
                 Spacer()
 
                 Button("Refresh Apps") {
@@ -97,4 +104,3 @@ struct ContentView: View {
         }
     }
 }
-

@@ -117,6 +117,20 @@ Configuration and the optional packet are stored at:
 Use **Remove Managed Copy** to delete only the re-signed launch copy; it does
 not remove Discord itself or the saved packet/configuration.
 
+## Troubleshooting Launches
+
+If Discord Drover reports that Discord exited before opening, macOS may be
+blocking the privately prepared Discord copy. Click **Reveal Prepared
+Discord**, then in Finder Control-click that revealed `Discord.app`, select
+**Open**, and approve it. Quit the normal Discord window that opens, then
+return to Discord Drover and click **Prepare and Launch Discord** again.
+
+Launch diagnostics are written to:
+
+```text
+~/Library/Application Support/Discord Drover/discord-launch.log
+```
+
 ## Implementation Notes
 
 The injected dylib interposes Darwin `socket`, `send`, `sendto`, `sendmsg`,
