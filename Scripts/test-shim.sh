@@ -16,18 +16,36 @@ mkdir -p "$CONFIG"
 clang -std=c11 -Wall -Wextra -Werror \
     "$ROOT/Tests/ShimHarness/main.c" -o "$HARNESS" -lpthread
 
+run_test() {
+    local label="$1"
+    local mode="$2"
+    local pid
+
+    echo "Testing $label..."
+    env DROVER_CONFIG_DIR="$CONFIG" DYLD_INSERT_LIBRARIES="$SHIM" "$HARNESS" "$mode" &
+    pid=$!
+    for _ in {1..15}; do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid"
+            return
+        fi
+        sleep 1
+    done
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+    echo "$label timed out after 15 seconds." >&2
+    exit 1
+}
+
 printf '[drover]\nproxy = \n' > "$CONFIG/drover.ini"
 printf 'packet-test' > "$CONFIG/drover-packet.bin"
-echo "Testing Direct-mode UDP injection..."
-DROVER_CONFIG_DIR="$CONFIG" DYLD_INSERT_LIBRARIES="$SHIM" "$HARNESS" udp
+run_test "Direct-mode UDP injection" udp
 
 rm -f "$CONFIG/drover-packet.bin"
 printf '[drover]\nproxy = http://user:pass@127.0.0.1:8080\n' > "$CONFIG/drover.ini"
-echo "Testing HTTP proxy authentication injection..."
-DROVER_CONFIG_DIR="$CONFIG" DYLD_INSERT_LIBRARIES="$SHIM" "$HARNESS" http
+run_test "HTTP proxy authentication injection" http
 
 printf '[drover]\nproxy = socks5://127.0.0.1:1080\n' > "$CONFIG/drover.ini"
-echo "Testing SOCKS5 CONNECT translation..."
-DROVER_CONFIG_DIR="$CONFIG" DYLD_INSERT_LIBRARIES="$SHIM" "$HARNESS" socks5
+run_test "SOCKS5 CONNECT translation" socks5
 
 echo "Drover shim integration tests passed."
