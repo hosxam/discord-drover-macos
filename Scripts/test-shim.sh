@@ -26,14 +26,17 @@ run_test() {
     pid=$!
     for _ in {1..15}; do
         if ! kill -0 "$pid" 2>/dev/null; then
-            wait "$pid"
-            return
+            if wait "$pid"; then
+                return
+            fi
+            echo "::error title=Shim integration test failed::$label failed. See build output for details."
+            exit 1
         fi
         sleep 1
     done
     kill "$pid" 2>/dev/null || true
     wait "$pid" 2>/dev/null || true
-    echo "$label timed out after 15 seconds." >&2
+    echo "::error title=Shim integration test timed out::$label timed out after 15 seconds."
     exit 1
 }
 
