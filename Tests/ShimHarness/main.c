@@ -8,7 +8,7 @@
 #include <sys/time.h>
 #include <unistd.h>
 
-#define FAIL(message) do { fprintf(stderr, "%s\n", message); return 1; } while (0)
+#define FAIL(message) do { fprintf(stderr, "::error title=Shim harness assertion::%s\n", message); return 1; } while (0)
 #define CHECK(condition, message) do { if (!(condition)) FAIL(message); } while (0)
 
 static void set_receive_timeout(int socket_fd) {
