@@ -104,9 +104,11 @@ so downloaded copies require the Control-click **Open** step above.
 Each release build executes local socket integration tests on GitHub's macOS
 runner before packaging. The tests verify the Direct-mode UDP preamble and
 optional packet, HTTP proxy authorization injection, and SOCKS5 CONNECT
-translation. They cannot verify a real Discord voice call on a restricted
-network; that last check depends on the user's Discord installation and
-network path.
+translation. The build also downloads the official Discord macOS application
+temporarily, prepares a private copy, injects the built shim, and checks that
+Discord remains running after startup. It cannot verify a real Discord voice
+call on a restricted network; that last check depends on the user's network
+path.
 
 ## Use
 

@@ -32,5 +32,6 @@ else
 fi
 
 bash "$ROOT/Scripts/test-shim.sh" "$APP/Contents/Resources/libdrover.dylib"
+bash "$ROOT/Scripts/test-discord-launch.sh" "$APP/Contents/Resources/libdrover.dylib"
 
 echo "Built $APP"
