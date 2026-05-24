@@ -188,7 +188,7 @@ final class DroverController: ObservableObject {
         }
     }
 
-    func revealManagedCopy() {
+    func showManagedCopyInFinder() {
         guard let application = applications.first(where: { $0.path == selectedApplicationPath }),
               let managedApplication = DroverRuntime.managedApplicationURL(for: application.url) else {
             setError("No prepared Discord copy was found. Click Prepare and Launch Discord first.")
@@ -196,7 +196,7 @@ final class DroverController: ObservableObject {
         }
 
         NSWorkspace.shared.activateFileViewerSelecting([managedApplication])
-        setStatus("In Finder, Control-click the revealed Discord app, choose Open, approve it, then quit it and retry from Discord Drover.")
+        setStatus("The prepared Discord copy is selected in Finder. This button shows the file; it does not launch Discord.")
     }
 
     private func validatedSettings() throws -> LaunchSettings {
@@ -312,6 +312,7 @@ enum DroverRuntime {
             try resignForInjection(managedApplication)
             try sourceVersion.write(to: marker, atomically: true, encoding: .utf8)
         }
+        try clearQuarantine(from: managedApplication)
 
         guard let executableName = Bundle(url: managedApplication)?
             .object(forInfoDictionaryKey: "CFBundleExecutable") as? String else {
@@ -353,7 +354,7 @@ enum DroverRuntime {
         guard process.isRunning else {
             let details = compactLogDetails(from: log)
             throw DroverError.message(
-                "Discord exited before opening. Click Reveal Prepared Discord, Control-click Discord in Finder, choose Open, quit it, and try again." + details
+                "Discord exited before opening. Click Show Prepared Discord in Finder to locate the local copy. If macOS blocks it, Control-click it, choose Open, quit Discord, and try again." + details
             )
         }
 
@@ -404,6 +405,15 @@ enum DroverRuntime {
             let detail = String(data: data, encoding: .utf8) ?? "codesign failed."
             throw DroverError.message("Could not prepare Discord for the Drover shim: \(detail)")
         }
+    }
+
+    private static func clearQuarantine(from application: URL) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
+        process.arguments = ["-dr", "com.apple.quarantine", application.path]
+        try process.run()
+        process.waitUntilExit()
+        // If the attribute is already absent, there is nothing to remove.
     }
 
     private static func compactLogDetails(from url: URL) -> String {

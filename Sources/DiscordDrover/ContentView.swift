@@ -74,8 +74,8 @@ struct ContentView: View {
                 .disabled(controller.busy)
 
                 if controller.canRevealManagedCopy {
-                    Button("Reveal Prepared Discord") {
-                        controller.revealManagedCopy()
+                    Button("Show Prepared Discord in Finder") {
+                        controller.showManagedCopyInFinder()
                     }
                     .disabled(controller.busy)
                 }

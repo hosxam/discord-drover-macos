@@ -27,9 +27,10 @@ therefore makes a private copy of the selected Discord app under:
 ~/Library/Application Support/Discord Drover/Managed/
 ```
 
-It ad-hoc signs that copy and launches it with `libdrover.dylib` inserted. The
-Discord installation in `/Applications` is never modified. When the original
-Discord version changes, the private copy is rebuilt automatically.
+It ad-hoc signs that copy, clears inherited download-quarantine metadata from
+that generated local copy, and launches it with `libdrover.dylib` inserted.
+The Discord installation in `/Applications` is never modified. When the
+original Discord version changes, the private copy is rebuilt automatically.
 
 Because of this macOS design, start Discord with **Prepare and Launch Discord**
 in Discord Drover whenever the shim should be active.
@@ -119,11 +120,13 @@ not remove Discord itself or the saved packet/configuration.
 
 ## Troubleshooting Launches
 
-If Discord Drover reports that Discord exited before opening, macOS may be
-blocking the privately prepared Discord copy. Click **Reveal Prepared
-Discord**, then in Finder Control-click that revealed `Discord.app`, select
-**Open**, and approve it. Quit the normal Discord window that opens, then
-return to Discord Drover and click **Prepare and Launch Discord** again.
+If Discord Drover reports that Discord exited before opening, click **Show
+Prepared Discord in Finder** to locate the privately prepared copy. The button
+shows the file; it does not launch Discord. New builds automatically clear
+quarantine from that generated local copy. If macOS still blocks it, in Finder
+Control-click the revealed `Discord.app`, select **Open**, and approve it.
+Quit the normal Discord window that opens, then return to Discord Drover and
+click **Prepare and Launch Discord** again.
 
 Launch diagnostics are written to:
 
