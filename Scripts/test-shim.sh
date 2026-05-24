@@ -25,7 +25,7 @@ run_test() {
     local status
 
     echo "Testing $label..."
-    env DROVER_CONFIG_DIR="$CONFIG" DYLD_INSERT_LIBRARIES="$SHIM" "$HARNESS" "$mode" > "$log" 2>&1 &
+    env DROVER_CONFIG_DIR="$CONFIG" DROVER_TRACE=1 DYLD_INSERT_LIBRARIES="$SHIM" "$HARNESS" "$mode" > "$log" 2>&1 &
     pid=$!
     for _ in {1..15}; do
         if ! kill -0 "$pid" 2>/dev/null; then

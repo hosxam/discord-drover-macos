@@ -46,13 +46,22 @@ static proxy_mode_t proxy_mode = PROXY_DIRECT;
 static char proxy_login[512];
 static char proxy_password[512];
 static char packet_path[PATH_MAX];
+static bool trace_enabled;
+
+static void trace_log(const char *message) {
+    if (trace_enabled) {
+        write(STDERR_FILENO, message, strlen(message));
+    }
+}
 
 static void resolve_system_calls(void) {
+    trace_log("resolve begin\n");
     system_socket = dlsym(RTLD_NEXT, "socket");
     system_send = dlsym(RTLD_NEXT, "send");
     system_recv = dlsym(RTLD_NEXT, "recv");
     system_sendto = dlsym(RTLD_NEXT, "sendto");
     system_sendmsg = dlsym(RTLD_NEXT, "sendmsg");
+    trace_log("resolve end\n");
 }
 
 static void ensure_system_calls(void) {
@@ -108,8 +117,11 @@ static void parse_proxy(char *value) {
 
 __attribute__((constructor))
 static void initialize_drover(void) {
+    trace_enabled = getenv("DROVER_TRACE") != NULL;
+    trace_log("constructor begin\n");
     const char *directory = getenv("DROVER_CONFIG_DIR");
     if (directory == NULL || *directory == '\0') {
+        trace_log("constructor no config\n");
         return;
     }
 
@@ -119,6 +131,7 @@ static void initialize_drover(void) {
 
     FILE *configuration = fopen(configuration_path, "r");
     if (configuration == NULL) {
+        trace_log("constructor config missing\n");
         return;
     }
 
@@ -135,6 +148,7 @@ static void initialize_drover(void) {
         }
     }
     fclose(configuration);
+    trace_log("constructor end\n");
 }
 
 static ssize_t find_socket_unlocked(int fd) {
@@ -422,6 +436,7 @@ static ssize_t substitute_socks_response(int fd, void *buffer, size_t length, ss
 }
 
 static void inject_udp_preamble(int fd, const struct sockaddr *destination, socklen_t destination_length) {
+    trace_log("preamble begin\n");
     if (packet_path[0] != '\0') {
         FILE *packet = fopen(packet_path, "rb");
         if (packet != NULL) {
@@ -431,6 +446,7 @@ static void inject_udp_preamble(int fd, const struct sockaddr *destination, sock
                     unsigned char *bytes = malloc((size_t)packet_length);
                     if (bytes != NULL) {
                         if (fread(bytes, 1, (size_t)packet_length, packet) == (size_t)packet_length) {
+                            trace_log("preamble packet send\n");
                             system_sendto(fd, bytes, (size_t)packet_length, 0, destination, destination_length);
                         }
                         free(bytes);
@@ -443,17 +459,22 @@ static void inject_udp_preamble(int fd, const struct sockaddr *destination, sock
 
     const unsigned char zero = 0;
     const unsigned char one = 1;
+    trace_log("preamble builtins send\n");
     system_sendto(fd, &zero, 1, 0, destination, destination_length);
     system_sendto(fd, &one, 1, 0, destination, destination_length);
     usleep(50000);
+    trace_log("preamble end\n");
 }
 
 int drover_socket(int domain, int type, int protocol) {
+    trace_log("socket enter\n");
     ensure_system_calls();
     int fd = system_socket(domain, type, protocol);
+    trace_log("socket real returned\n");
     if ((type & SOCK_STREAM) == SOCK_STREAM || (type & SOCK_DGRAM) == SOCK_DGRAM) {
         track_socket(fd, type & 0xffff);
     }
+    trace_log("socket exit\n");
     return fd;
 }
 
@@ -487,11 +508,13 @@ ssize_t drover_sendto(
     const struct sockaddr *destination,
     socklen_t destination_length
 ) {
+    trace_log("sendto enter\n");
     ensure_system_calls();
     int type;
     if (mark_first_send(fd, &type) && (type & SOCK_DGRAM) == SOCK_DGRAM && length == 74) {
         inject_udp_preamble(fd, destination, destination_length);
     }
+    trace_log("sendto original\n");
     return system_sendto(fd, buffer, length, flags, destination, destination_length);
 }
 
